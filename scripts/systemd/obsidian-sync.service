@@ -11,7 +11,9 @@ WorkingDirectory=/srv/obsidian
 Environment=HOME=/srv/obsidian
 Environment=XDG_CONFIG_HOME=/srv/obsidian/.config
 Environment=XDG_DATA_HOME=/srv/obsidian/.local/share
-ExecStart=/usr/bin/ob sync --continuous --vault "MY_VAULT"
+# The remote vault is bound to this local path once via `ob sync-setup
+# --vault <name> --path /srv/obsidian/vault`; `ob sync` then takes --path, not --vault.
+ExecStart=/usr/bin/ob sync --continuous --path /srv/obsidian/vault
 Restart=on-failure
 RestartSec=5
 
