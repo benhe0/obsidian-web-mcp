@@ -12,6 +12,25 @@ import pytest
 from obsidian_vault_mcp import server
 
 
+def test_server_binds_loopback_and_trusts_only_localhost(tmp_path, monkeypatch):
+    """main() must bind 127.0.0.1 and only trust forwarded headers from localhost."""
+    import uvicorn
+    from unittest.mock import MagicMock, Mock
+
+    monkeypatch.setattr(server, "VAULT_PATH", tmp_path)
+    monkeypatch.setattr(server, "VAULT_MCP_TOKEN", "a-token")
+    monkeypatch.setattr(server.mcp, "streamable_http_app", lambda: MagicMock())
+    run_mock = Mock()
+    monkeypatch.setattr(uvicorn, "run", run_mock)
+
+    server.main()
+
+    run_mock.assert_called_once()
+    kwargs = run_mock.call_args.kwargs
+    assert kwargs["host"] == "127.0.0.1"
+    assert kwargs["forwarded_allow_ips"] == "127.0.0.1"
+
+
 def test_app_build_failure_fails_closed(tmp_path, monkeypatch):
     """If building the authenticated app raises, main() must exit, not serve.
 

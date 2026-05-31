@@ -227,11 +227,11 @@ def main():
         import uvicorn
         uvicorn.run(
             app,
-            host="0.0.0.0",
+            host="127.0.0.1",
             port=VAULT_MCP_PORT,
             log_level="info",
             proxy_headers=True,
-            forwarded_allow_ips="*",
+            forwarded_allow_ips="127.0.0.1",
         )
     except Exception as e:
         # Fail closed: never fall back to an unauthenticated transport. Serving
