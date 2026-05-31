@@ -1,0 +1,35 @@
+[Unit]
+Description=Obsidian Sync headless daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=obsidian
+Group=obsidian
+WorkingDirectory=/srv/obsidian
+Environment=HOME=/srv/obsidian
+Environment=XDG_CONFIG_HOME=/srv/obsidian/.config
+Environment=XDG_DATA_HOME=/srv/obsidian/.local/share
+ExecStart=/usr/bin/ob sync --continuous --vault "MY_VAULT"
+Restart=on-failure
+RestartSec=5
+
+# --- Sandbox ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/obsidian
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
