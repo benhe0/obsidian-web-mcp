@@ -32,6 +32,31 @@ logger = logging.getLogger(__name__)
 # Maps code -> {client_id, redirect_uri, code_challenge, code_challenge_method, expires_at}
 _auth_codes: dict[str, dict] = {}
 
+# In-memory store for dynamically registered clients.
+# Maps client_id -> client_secret. Each registration gets a unique secret so the
+# configured shared secret is never handed out over the wire.
+_registered_clients: dict[str, str] = {}
+
+
+def _client_secret_valid(client_secret: str) -> bool:
+    """Constant-time check that a presented client_secret authenticates a client.
+
+    Accepts either the pre-configured shared secret or a secret issued to a
+    dynamically registered client. An empty secret never authenticates.
+    """
+    if not client_secret:
+        return False
+
+    configured = config.VAULT_OAUTH_CLIENT_SECRET
+    if configured and hmac.compare_digest(client_secret, configured):
+        return True
+
+    for registered in _registered_clients.values():
+        if hmac.compare_digest(client_secret, registered):
+            return True
+
+    return False
+
 # Clean up expired codes periodically
 def _cleanup_codes():
     now = time.time()
@@ -129,6 +154,19 @@ async def _handle_authorization_code(form, client_id: str, client_secret: str) -
     redirect_uri = form.get("redirect_uri", "")
     code_verifier = form.get("code_verifier", "")
 
+    # Authenticate the client BEFORE consuming the code. PKCE alone is not a
+    # security boundary here: an anonymous caller can drive /oauth/authorize and
+    # generate its own verifier/challenge pair, so the only thing that proves the
+    # caller is the trusted Claude integration is possession of the client secret.
+    if not _client_secret_valid(client_secret):
+        logger.warning(
+            f"OAuth authorization_code: client authentication failed (client_id={client_id!r})"
+        )
+        return JSONResponse(
+            {"error": "invalid_client", "error_description": "client authentication failed"},
+            status_code=401,
+        )
+
     _cleanup_codes()
 
     if code not in _auth_codes:
@@ -192,12 +230,16 @@ async def oauth_register(request: Request) -> JSONResponse:
     except Exception:
         body = {}
 
-    # Generate a unique client_id for this registration
+    # Generate a unique client_id AND a unique client_secret for this
+    # registration. Never hand back the configured shared secret -- doing so
+    # would let any anonymous caller learn it and authenticate as a real client.
     client_id = f"vault-mcp-{secrets.token_hex(8)}"
+    client_secret = secrets.token_hex(32)
+    _registered_clients[client_id] = client_secret
 
     return JSONResponse({
         "client_id": client_id,
-        "client_secret": config.VAULT_OAUTH_CLIENT_SECRET,
+        "client_secret": client_secret,
         "client_name": body.get("client_name", "Obsidian Vault MCP Client"),
         "grant_types": ["authorization_code"],
         "response_types": ["code"],

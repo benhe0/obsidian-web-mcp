@@ -6,6 +6,11 @@ VAULT_PATH = Path(os.environ.get("VAULT_PATH", os.path.expanduser("~/Obsidian/My
 VAULT_MCP_TOKEN = os.environ.get("VAULT_MCP_TOKEN", "")
 VAULT_MCP_PORT = int(os.environ.get("VAULT_MCP_PORT", "8420"))
 
+# Public hostname the server is reached at (e.g. via Cloudflare Tunnel). Used to
+# allow that host through the MCP library's DNS-rebinding protection. The same
+# variable is consumed by scripts/setup-tunnel.sh, so one value configures both.
+VAULT_MCP_HOSTNAME = os.environ.get("VAULT_MCP_HOSTNAME", "")
+
 # OAuth 2.0 client credentials (for Claude app integration)
 VAULT_OAUTH_CLIENT_ID = os.environ.get("VAULT_OAUTH_CLIENT_ID", "vault-mcp-client")
 VAULT_OAUTH_CLIENT_SECRET = os.environ.get("VAULT_OAUTH_CLIENT_SECRET", "")

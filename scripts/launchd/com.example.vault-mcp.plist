@@ -25,6 +25,8 @@
         <string>vault-mcp-client</string>
         <key>VAULT_OAUTH_CLIENT_SECRET</key>
         <string>REPLACE_WITH_OAUTH_SECRET</string>
+        <key>VAULT_MCP_HOSTNAME</key>
+        <string>REPLACE_WITH_HOSTNAME</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

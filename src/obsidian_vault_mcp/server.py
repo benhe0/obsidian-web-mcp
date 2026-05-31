@@ -12,13 +12,26 @@ from contextlib import asynccontextmanager
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from .config import VAULT_MCP_PORT, VAULT_MCP_TOKEN, VAULT_PATH
+from .config import VAULT_MCP_HOSTNAME, VAULT_MCP_PORT, VAULT_MCP_TOKEN, VAULT_PATH
 from .frontmatter_index import FrontmatterIndex
 
 logger = logging.getLogger(__name__)
 
 # Global frontmatter index instance
 frontmatter_index = FrontmatterIndex()
+
+
+def _build_allowed_hosts(hostname: str | None) -> list[str]:
+    """Build the DNS-rebinding allowed_hosts list.
+
+    Always permits loopback. Appends the configured public hostname when one is
+    set, so remote access through the tunnel is accepted without hard-coding any
+    deployment-specific value into the source.
+    """
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    if hostname:
+        hosts.append(hostname)
+    return hosts
 
 
 @asynccontextmanager
@@ -40,13 +53,8 @@ mcp = FastMCP(
     lifespan=lifespan,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=[
-            "127.0.0.1:*",
-            "localhost:*",
-            "[::1]:*",
-            # Add your tunnel hostname here, e.g.:
-            # "vault-mcp.example.com",
-        ],
+        # Set VAULT_MCP_HOSTNAME to your tunnel hostname to allow remote access.
+        allowed_hosts=_build_allowed_hosts(VAULT_MCP_HOSTNAME),
     ),
 )
 
@@ -226,9 +234,12 @@ def main():
             forwarded_allow_ips="*",
         )
     except Exception as e:
-        logger.warning(f"Could not build app ({e}), falling back to mcp.run()")
-        logger.warning("Auth will NOT be enforced in this mode")
-        mcp.run(transport="streamable-http", port=VAULT_MCP_PORT)
+        # Fail closed: never fall back to an unauthenticated transport. Serving
+        # the vault without bearer-token enforcement would expose every note to
+        # anyone who can reach the port, so a build failure must stop startup.
+        logger.error(f"Could not build the authenticated app: {e}")
+        logger.error("Refusing to start without auth enforcement. Exiting.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

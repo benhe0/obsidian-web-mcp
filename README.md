@@ -37,7 +37,9 @@ Obsidian and the MCP server both operate on the same directory of markdown files
 
 This is a server that provides network access to your personal notes. Security is not optional.
 
-**Authentication is enforced on every request.** The server implements OAuth 2.0 authorization code flow with PKCE for initial client authentication (what Claude uses when you connect the integration), plus bearer token validation on every subsequent MCP tool call. No request reaches a tool function without a valid token.
+**Authentication is enforced on every request.** The server implements the OAuth 2.0 authorization code flow with PKCE (what Claude uses when you connect the integration), plus bearer token validation on every subsequent MCP tool call. No request reaches a tool function without a valid token.
+
+**Client authentication gates the token.** The authorization endpoint auto-approves (single-user model), but auto-approval alone grants nothing: the token endpoint will only issue a bearer token to a caller that proves possession of the OAuth client secret. PKCE is not treated as a standalone boundary, since a caller that reaches the authorization endpoint controls its own PKCE pair. Dynamic client registration issues a unique secret per registration -- the configured shared secret is never returned over the wire.
 
 **Your vault is never exposed directly to the internet.** The recommended deployment uses a Cloudflare Tunnel -- an outbound-only encrypted connection. Your machine opens no inbound ports. You can layer Cloudflare Access on top for additional authentication (SSO, device posture checks, IP restrictions) if you want defense in depth.
 
@@ -46,6 +48,8 @@ This is a server that provides network access to your personal notes. Security i
 **Writes are atomic.** Every file write goes to a temporary file first, then atomically replaces the target via `os.replace()`. This guarantees that neither Obsidian nor Obsidian Sync ever sees a partially-written file -- the operation either completes fully or doesn't happen at all.
 
 **Safety limits prevent abuse.** Writes are capped at 1MB per file, batch operations at 20 files per request, and search results at 50 matches. Deletions are soft -- files move to `.trash/` rather than being permanently removed, matching Obsidian's own behavior. The delete tool also requires an explicit `confirm=true` parameter as a safety gate.
+
+**Startup fails closed.** If the authenticated app cannot be built for any reason, the server logs the error and exits rather than falling back to an unauthenticated transport. It will never serve your vault without bearer-token enforcement.
 
 ## Tools
 
@@ -100,6 +104,7 @@ All configuration is via environment variables:
 | `VAULT_PATH` | Yes | `~/Obsidian/MyVault` | Absolute path to your Obsidian vault directory |
 | `VAULT_MCP_TOKEN` | Yes | (none) | 256-bit bearer token for authenticating MCP requests |
 | `VAULT_MCP_PORT` | No | `8420` | Port the HTTP server listens on |
+| `VAULT_MCP_HOSTNAME` | For remote | (none) | Public tunnel hostname; added to the DNS-rebinding allow-list so remote requests are accepted |
 | `VAULT_OAUTH_CLIENT_ID` | No | `vault-mcp-client` | OAuth 2.0 client ID for Claude integration |
 | `VAULT_OAUTH_CLIENT_SECRET` | Yes | (none) | OAuth 2.0 client secret for Claude integration |
 
@@ -114,7 +119,7 @@ The Claude desktop and mobile apps can connect to remote MCP servers via OAuth.
 3. Enter your server URL (e.g. `https://vault-mcp.yourdomain.com`)
 4. Enter the OAuth client ID and client secret you configured
 5. Claude will discover the OAuth endpoints automatically and open a browser window
-6. The server auto-approves the authorization (single-user model) and redirects back
+6. The server auto-approves the authorization (single-user model) and redirects back; Claude then exchanges the code for a bearer token by presenting the client secret you configured
 7. Claude now has access to all nine vault tools -- on desktop and mobile
 
 For local-only use (no tunnel), point Claude at `http://localhost:8420`.
@@ -134,16 +139,7 @@ export VAULT_MCP_HOSTNAME="vault-mcp.yourdomain.com"
 
 The script authenticates with Cloudflare, creates a tunnel, writes the config, and sets up the DNS record. You will need a domain managed by Cloudflare.
 
-After setup, add your tunnel hostname to the `allowed_hosts` list in `server.py` so the MCP library's DNS rebinding protection accepts requests from your domain:
-
-```python
-allowed_hosts=[
-    "127.0.0.1:*",
-    "localhost:*",
-    "[::1]:*",
-    "vault-mcp.yourdomain.com",  # add your hostname here
-],
-```
+The `VAULT_MCP_HOSTNAME` you exported above is also read by the server: it adds your tunnel hostname to the MCP library's DNS-rebinding allow-list so requests from your domain are accepted. Make sure the same value is set in the server's environment (the launchd plist below passes it through). No source edits required.
 
 ## Production Deployment (macOS)
 
@@ -162,6 +158,7 @@ Open each plist and replace the placeholder tokens:
 - `REPLACE_WITH_VAULT_PATH` -- absolute path to your Obsidian vault
 - `REPLACE_WITH_TOKEN` -- your `VAULT_MCP_TOKEN` value
 - `REPLACE_WITH_OAUTH_SECRET` -- your `VAULT_OAUTH_CLIENT_SECRET` value
+- `REPLACE_WITH_HOSTNAME` -- your public tunnel hostname (e.g. `vault-mcp.yourdomain.com`); leave empty for local-only use
 - `REPLACE_WITH_HOME` -- your home directory (e.g. `/Users/yourname`)
 - `REPLACE_WITH_CLOUDFLARED_PATH` -- path to `cloudflared` binary (run `which cloudflared`)
 
