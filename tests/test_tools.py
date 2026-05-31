@@ -41,6 +41,44 @@ def test_vault_write_merge_frontmatter(vault_dir):
     assert read_result["frontmatter"]["priority"] == "high"  # new
 
 
+def test_vault_read_serializes_datetime_frontmatter(vault_dir):
+    """Frontmatter date/datetime values must serialize as ISO strings, not crash.
+
+    PyYAML parses `created: 2024-01-15` into a datetime.date, which is not JSON
+    serializable by default. vault_read must still return the note (with the date
+    rendered as an ISO string), not an "Object of type datetime ..." error.
+    """
+    (vault_dir / "dated-note.md").write_text(
+        "---\ncreated: 2024-01-15\nupdated: 2024-01-15 09:30:00\n---\n\nDated note.\n"
+    )
+    result = json.loads(vault_read("dated-note.md"))
+    assert "error" not in result
+    assert result["frontmatter"]["created"] == "2024-01-15"
+    assert result["frontmatter"]["updated"].startswith("2024-01-15T09:30:00")
+
+
+def test_vault_batch_read_serializes_datetime_frontmatter(vault_dir):
+    """vault_batch_read must not crash on frontmatter date values."""
+    (vault_dir / "dated-note.md").write_text(
+        "---\ncreated: 2024-01-15\n---\n\nDated note.\n"
+    )
+    result = json.loads(vault_batch_read(["dated-note.md"]))
+    assert result["found"] == 1
+    assert result["files"][0]["frontmatter"]["created"] == "2024-01-15"
+
+
+def test_vault_search_serializes_datetime_frontmatter(vault_dir):
+    """vault_search must not crash when a match's frontmatter excerpt has a date."""
+    (vault_dir / "dated-note.md").write_text(
+        "---\ncreated: 2024-01-15\n---\n\nUniqueHomelabToken content.\n"
+    )
+    result = json.loads(vault_search("UniqueHomelabToken"))
+    assert "error" not in result
+    assert result["total_matches"] >= 1
+    match = next(m for m in result["results"] if m["path"] == "dated-note.md")
+    assert match["frontmatter_excerpt"]["created"] == "2024-01-15"
+
+
 def test_vault_search_finds_text(vault_dir):
     """vault_search finds text in files."""
     result = json.loads(vault_search("test note"))
