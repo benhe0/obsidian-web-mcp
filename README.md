@@ -116,13 +116,13 @@ The Claude desktop and mobile apps can connect to remote MCP servers via OAuth.
 
 1. Start the server (locally or behind a tunnel)
 2. Open Claude and go to **Settings > Integrations > Add Integration**
-3. Enter your server URL (e.g. `https://vault-mcp.yourdomain.com`)
+3. Enter your server URL **including the `/mcp` path** (e.g. `https://vault-mcp.yourdomain.com/mcp`). The MCP endpoint is served at `/mcp` -- pointing Claude at the bare host makes it POST to `/` and fail with 404 after a successful OAuth handshake. (OAuth discovery still resolves from the host root automatically.)
 4. Enter the OAuth client ID and client secret you configured
 5. Claude will discover the OAuth endpoints automatically and open a browser window
 6. The server auto-approves the authorization (single-user model) and redirects back; Claude then exchanges the code for a bearer token by presenting the client secret you configured
 7. Claude now has access to all nine vault tools -- on desktop and mobile
 
-For local-only use (no tunnel), point Claude at `http://localhost:8420`.
+For local-only use (no tunnel), point Claude at `http://localhost:8420/mcp`.
 
 ## Remote Access with Cloudflare Tunnel
 
