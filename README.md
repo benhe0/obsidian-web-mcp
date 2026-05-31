@@ -184,6 +184,22 @@ curl -s http://localhost:8420/.well-known/oauth-authorization-server
 tail -f ~/Library/Logs/vault-mcp-error.log
 ```
 
+## Production Deployment (Linux / systemd + Tailscale Funnel)
+
+For a Debian/Ubuntu VPS, run the server and the Obsidian Sync CLI as a dedicated
+`obsidian` system user via hardened systemd units, exposed through Tailscale Funnel.
+
+1. Create the `obsidian` user and layout (`/srv/obsidian/vault`, `/opt/obsidian-web-mcp`).
+2. Install Python 3.12 via `uv` (pin `UV_PYTHON_INSTALL_DIR=/opt/obsidian-runtime/python`) and `uv sync`.
+3. Put secrets in `/etc/vault-mcp/env` (root-owned `0600`): `VAULT_MCP_TOKEN`,
+   `VAULT_OAUTH_CLIENT_SECRET`, `VAULT_OAUTH_CLIENT_ID`, `VAULT_PATH=/srv/obsidian/vault`,
+   `VAULT_MCP_PORT=8420`, `VAULT_MCP_HOSTNAME=<your-host>.ts.net`.
+4. Install the unit templates from `scripts/systemd/`, then `systemctl enable --now vault-mcp obsidian-sync`.
+5. Expose via Funnel: `tailscale funnel --bg --https=443 127.0.0.1:8420`.
+
+The server binds `127.0.0.1` only; Funnel is the sole public ingress. SSH should be
+restricted to the Tailscale interface and a default-deny host firewall applied.
+
 ## Obsidian Sync Compatibility
 
 The server coexists with Obsidian Sync (or any file-based sync mechanism) without conflict. All writes use atomic file replacement (`write-to-temp-then-rename`), which means:
