@@ -23,9 +23,23 @@ class FrontmatterIndex:
         self._observer: Observer | None = None
         self._debounce_timer: threading.Timer | None = None
         self._pending_paths: set[str] = set()
+        self._started = False
 
     def start(self) -> None:
-        """Walk all .md files, parse frontmatter, and start watching for changes."""
+        """Walk all .md files, parse frontmatter, and start watching for changes.
+
+        Idempotent: the index instance is process-global and the server runs with
+        stateless_http=True, whose request lifespan can run on every MCP call.
+        Only the first call performs the expensive vault walk and starts the
+        filesystem observer; later calls return immediately. Re-walking the whole
+        vault per request previously blocked every call for seconds and could
+        leak a duplicate watchdog Observer.
+        """
+        with self._lock:
+            if self._started:
+                return
+            self._started = True
+
         t0 = time.monotonic()
         count = 0
 
@@ -57,6 +71,7 @@ class FrontmatterIndex:
             self._observer.stop()
             self._observer.join()
             self._observer = None
+        self._started = False
 
     @property
     def file_count(self) -> int:

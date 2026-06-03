@@ -36,13 +36,16 @@ def _build_allowed_hosts(hostname: str | None) -> list[str]:
 
 @asynccontextmanager
 async def lifespan(server):
-    """Start frontmatter index on server startup, stop on shutdown."""
-    logger.info(f"Starting vault MCP server. Vault: {VAULT_PATH}")
-    frontmatter_index.start()
-    logger.info(f"Frontmatter index built: {frontmatter_index.file_count} files indexed")
+    """Per-request server lifespan -- must stay cheap.
+
+    With stateless_http=True this context manager runs on *every* MCP request,
+    so it must not build or tear down the frontmatter index. The index is built
+    once at process startup in main(); rebuilding it here re-walked the whole
+    vault on every call and blocked Claude's first request past its connect
+    timeout (surfacing as "Authorization failed"). FrontmatterIndex.start() is
+    idempotent, so this only exposes the already-built index to tools.
+    """
     yield {"frontmatter_index": frontmatter_index}
-    frontmatter_index.stop()
-    logger.info("Vault MCP server shut down.")
 
 
 # Create the MCP server
@@ -209,6 +212,13 @@ def main():
 
     if not VAULT_MCP_TOKEN:
         logger.warning("VAULT_MCP_TOKEN is not set -- auth will reject all requests")
+
+    # Build the frontmatter index ONCE here at process startup, not in the
+    # request lifespan. stateless_http=True runs the lifespan per request, so
+    # building the index there re-walked the entire vault on every MCP call.
+    logger.info(f"Starting vault MCP server. Vault: {VAULT_PATH}")
+    frontmatter_index.start()
+    logger.info(f"Frontmatter index built: {frontmatter_index.file_count} files indexed")
 
     # Build the Starlette app with auth middleware and OAuth endpoints
     try:

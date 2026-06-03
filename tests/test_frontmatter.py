@@ -21,6 +21,28 @@ def test_index_builds_on_startup(index, vault_dir):
     # no-frontmatter.md may or may not be in index (no frontmatter to parse)
 
 
+def test_start_is_idempotent(vault_dir):
+    """Repeated start() calls must not re-walk the vault or leak a new observer.
+
+    The server runs with stateless_http=True, which invokes the request lifespan
+    on every MCP call. The lifespan used to call start() each time, re-walking
+    the entire vault (~15s for a large vault) and spawning a fresh watchdog
+    Observer per request. That blocked Claude's first post-OAuth request past its
+    connect timeout, surfacing as "Authorization failed". start() must build once
+    and be a cheap no-op thereafter.
+    """
+    idx = FrontmatterIndex()
+    try:
+        idx.start()
+        first_observer = idx._observer
+        count_after_first = idx.file_count
+        idx.start()  # second call must be a no-op
+        assert idx._observer is first_observer  # no new observer thread leaked
+        assert idx.file_count == count_after_first
+    finally:
+        idx.stop()
+
+
 def test_search_exact_match(index, vault_dir):
     """Search for field=status, value=active, match_type=exact."""
     results = index.search_by_field("status", "active", "exact")
